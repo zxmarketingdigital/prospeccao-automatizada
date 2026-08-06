@@ -118,7 +118,7 @@ def detect_scheduler():
 
 def print_plan():
     steps = [
-        ("Etapa 0", "Base S3         — Ambiente e estrutura de diretorios (este script)"),
+        ("Etapa 0", "Base            — Ambiente e estrutura de diretorios (este script)"),
         ("Etapa 1", "Perfil          — Perfil de prospeccao e cliente ideal"),
         ("Etapa 2", "APIFY           — Busca de leads na internet (Google Maps)"),
         ("Etapa 3", "Canais          — WhatsApp (Evolution) + Email (Resend) + rate limiter"),
