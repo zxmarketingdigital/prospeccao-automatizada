@@ -49,6 +49,6 @@ schtasks /query /tn "OperacaoIA-Prospecting-Daily"
 ## Observacoes
 
 - Use `/pausar-prospeccao` para suspender a automacao novamente
-- Se os plists nao existirem (macOS), re-execute: `python3 zx-control-semana3/setup/setup_automation.py`
+- Se os plists nao existirem (macOS), re-execute: `python3 prospeccao-automatizada/setup/setup_automation.py`
 - Para executar imediatamente sem esperar o horario agendado:
   `python3 ~/.operacao-ia/scripts/prospecting_engine.py --daily`

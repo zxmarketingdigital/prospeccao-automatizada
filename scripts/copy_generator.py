@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 copy_generator.py — Gerador de mensagens personalizadas para prospeccao.
-Semana 3 — ZX Control.
+Prospeccao Automatizada.
 
 Uso como modulo:
     from copy_generator import get_message, get_email_subject, generate_templates
@@ -369,7 +369,7 @@ def _cli_preview(segment: str, channel: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Gerador de copy para prospeccao — ZX Control Semana 3"
+        description="Gerador de copy para prospeccao — Prospeccao Automatizada"
     )
     parser.add_argument(
         "--preview",

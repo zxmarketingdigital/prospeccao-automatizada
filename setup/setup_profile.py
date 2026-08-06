@@ -194,7 +194,7 @@ def print_summary(profile):
 def main():
     print()
     print("=" * 50)
-    print("  ZX Control — Semana 3: Prospeccao Automatizada")
+    print("  Prospeccao Automatizada com Claude Code")
     print("=" * 50)
     print()
     print("  [█░░░░░░░░░] Etapa 1 de 9")

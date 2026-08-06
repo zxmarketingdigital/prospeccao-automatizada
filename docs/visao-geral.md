@@ -1,4 +1,4 @@
-# ZX Control Semana 3 — Visao Geral do Sistema
+# Prospeccao Automatizada — Visao Geral do Sistema
 
 ## O que faz
 

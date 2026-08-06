@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Etapa 7 — Instalar automacao diaria cross-platform + 4 skills Claude Code.
-ZX Control Semana 3
+Prospeccao Automatizada
 """
 
 import shutil

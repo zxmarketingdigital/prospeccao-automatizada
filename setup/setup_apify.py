@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Etapa 2 — Configurar Apify para prospeccao automatica no Google Maps.
-ZX Control Semana 3
+Prospeccao Automatizada
 """
 
 import getpass

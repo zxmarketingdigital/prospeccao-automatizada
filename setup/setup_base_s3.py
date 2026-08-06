@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Etapa 0 — Base Semana 3
+Etapa 0 — Base
 Boas-vindas, diagnostico do ambiente e criacao da estrutura de diretorios.
 """
 
 import json
+import os
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -17,9 +19,7 @@ from lib import (
     CONFIG_PATH,
     PLATFORM,
     ensure_structure,
-    load_config,
     mark_checkpoint,
-    now_iso,
     save_config,
 )
 
@@ -38,19 +38,57 @@ def ask(prompt, secret=False):
         sys.exit(0)
 
 
-def check_phase(config):
-    """Verifica se Semanas 1 e 2 foram concluidas."""
-    phase = config.get("phase_completed", 0)
-    if phase < 2:
-        print()
-        print("  ATENCAO: Semanas 1 e 2 nao foram concluidas.")
-        print(f"  phase_completed atual: {phase} (esperado: >= 2)")
-        print()
-        print("  Conclua as semanas anteriores antes de continuar:")
-        print("    Semana 1: ~/zx-control-semana1/")
-        print("    Semana 2: ~/zx-control-semana2/")
-        print()
-        sys.exit(1)
+def ensure_base_config():
+    """Garante um config base sem exigir setups anteriores."""
+    base_config = {"phase_completed": 0, "origem": "prospeccao-automatizada"}
+    if not CONFIG_PATH.exists():
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        save_config(base_config)
+        print(f"  [OK] Configuracao base criada em {CONFIG_PATH}")
+        return base_config
+
+    try:
+        config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        if not isinstance(config, dict):
+            raise ValueError("config.json nao contem um objeto JSON")
+    except Exception:
+        # O arquivo existe mas nao pode ser lido. Ele pode conter tokens de API que o
+        # aluno digitou, entao NUNCA sobrescrevemos sem antes ter um backup intacto.
+        #
+        # O backup e' feito por BYTES (shutil.copy2), nao por texto: uma escrita
+        # interrompida deixa bytes que nao sao UTF-8 validos, e ler como texto aqui
+        # levantaria UnicodeDecodeError dentro do proprio tratamento de erro —
+        # derrubando o setup exatamente no caminho que existe para recupera-lo.
+        backup_name = "config.json.bak-" + datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = CONFIG_PATH.parent / backup_name
+        try:
+            shutil.copy2(str(CONFIG_PATH), str(backup_path))
+            # O conteudo pode ter credenciais: so' o dono pode ler.
+            os.chmod(str(backup_path), 0o600)
+        except Exception as exc:
+            print()
+            print("  [XX] config.json existe mas nao pode ser lido, e o backup falhou:")
+            print(f"       {exc}")
+            print(f"       Arquivo: {CONFIG_PATH}")
+            print()
+            print("  Nao vamos sobrescrever o arquivo para nao perder o que houver nele.")
+            print("  Mova ou apague esse arquivo manualmente e rode o setup de novo.")
+            print()
+            sys.exit(1)
+
+        save_config(base_config)
+        print(
+            "  [AVISO] config.json estava corrompido — backup salvo em "
+            f"{backup_name} e configuracao base recriada."
+        )
+        print(
+            "          Se voce ja tinha chaves de API configuradas, elas estao nesse "
+            "backup — vamos pedi-las de novo nas proximas etapas."
+        )
+        return base_config
+
+    print("  [OK] Configuracao base encontrada.")
+    return config
 
 
 def detect_scheduler():
@@ -114,30 +152,21 @@ def read_claude_settings():
 def main():
     print()
     print("=" * 50)
-    print("  ZX Control — Semana 3: Prospeccao Automatizada")
+    print("  Prospeccao Automatizada com Claude Code")
     print("=" * 50)
     print()
     print("  [░░░░░░░░░░] Etapa 0 de 9")
     print()
-    print("  Bem-vindo(a) ao setup da Semana 3!")
+    print("  Bem-vindo(a) ao setup!")
     print()
-    print("  Nesta semana voce vai montar um sistema completo de")
-    print("  prospeccao automatizada: busca de leads, disparo via")
-    print("  WhatsApp e Email, rastreamento de respostas e dashboard.")
+    print("  Aqui voce vai montar um sistema completo de prospeccao")
+    print("  automatizada: busca de leads, disparo via WhatsApp e")
+    print("  Email, rastreamento de respostas e dashboard.")
     print()
 
-    # --- Carrega config e valida fases anteriores ---
+    # --- Garante configuracao base ---
     print("  Verificando pre-requisitos...")
-    try:
-        config = load_config()
-    except FileNotFoundError:
-        print()
-        print("  ERRO: config.json nao encontrado.")
-        print("  Execute primeiro o setup das Semanas 1 e 2.")
-        sys.exit(1)
-
-    check_phase(config)
-    print("  [OK] Semanas 1 e 2 concluidas.")
+    config = ensure_base_config()
     print()
 
     # --- Detecta e salva plataforma ---

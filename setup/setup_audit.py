@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Etapa 8 — Auditoria Tecnica do Sistema de Prospeccao
-ZX Control Semana 3
+Prospeccao Automatizada
 """
 
 import json
@@ -40,11 +40,16 @@ PROGRESS_BAR = "[########. ] Etapa 8 de 9"
 
 REQUIRED_CONFIG_KEYS = [
     "apify_api_token",
-    "evolution_api_url",
-    "evolution_api_key",
-    "resend_api_key",
     "platform",
 ]
+
+# Canais de disparo. Cada um e' opcional (o setup permite pular WhatsApp ou Email),
+# mas pelo menos UM precisa existir — sem canal nenhum nao ha' como prospectar.
+# Nomeadas em vez de fatiadas por posicao: reordenar a lista nao pode trocar a
+# semantica de "WhatsApp configurado" em silencio.
+WHATSAPP_CONFIG_KEYS = ["evolution_api_url", "evolution_api_key"]
+EMAIL_CONFIG_KEY = "resend_api_key"
+OPTIONAL_CHANNEL_KEYS = WHATSAPP_CONFIG_KEYS + [EMAIL_CONFIG_KEY]
 
 REQUIRED_PROFILE_KEYS = [
     "agency_name",
@@ -81,7 +86,18 @@ def check_config():
         missing = [k for k in REQUIRED_CONFIG_KEYS if not cfg.get(k)]
         if missing:
             return False, f"Chaves ausentes: {', '.join(missing)}", None
-        return True, "Todas as chaves presentes", cfg
+        whatsapp_configured = all(cfg.get(k) for k in WHATSAPP_CONFIG_KEYS)
+        email_configured = bool(cfg.get(EMAIL_CONFIG_KEY))
+        if not whatsapp_configured and not email_configured:
+            return False, "Ao menos um canal (WhatsApp ou Email) precisa estar configurado", None
+        missing_channels = []
+        if not whatsapp_configured:
+            missing_channels.append("WhatsApp nao configurado")
+        if not email_configured:
+            missing_channels.append("Email nao configurado")
+        if missing_channels:
+            return True, f"Todas as chaves obrigatorias presentes ({', '.join(missing_channels)})", cfg
+        return True, "Todas as chaves obrigatorias presentes", cfg
     except Exception as e:
         return False, f"JSON invalido: {e}", None
 
@@ -117,7 +133,7 @@ def check_whatsapp(config):
     url = config.get("evolution_api_url", "").rstrip("/")
     key = config.get("evolution_api_key", "")
     if not url or not key:
-        return False, "URL ou chave Evolution nao configurados"
+        return True, "Nao configurado (canal opcional)"
     endpoint = f"{url}/instance/fetchInstances"
     status, _ = _http_get(endpoint, headers={"apikey": key})
     if status == 200:
@@ -129,7 +145,7 @@ def check_email(config):
     """5. Email ativo"""
     key = config.get("resend_api_key", "")
     if not key:
-        return False, "resend_api_key nao configurado"
+        return True, "Nao configurado (canal opcional)"
     status, _ = _http_get(
         "https://api.resend.com/domains",
         headers={"Authorization": f"Bearer {key}"},
@@ -242,7 +258,7 @@ def check_sqlite():
 def check_checkpoints():
     """13. Checkpoints anteriores"""
     if not CHECKPOINT_PATH.exists():
-        return False, "week3_checkpoint.json nao encontrado"
+        return False, "checkpoint do setup nao encontrado"
     try:
         data = json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
         steps = data.get("steps", {})
@@ -296,7 +312,7 @@ def fix_structure():
 def main():
     print()
     print("=" * 60)
-    print("  ZX CONTROL — SEMANA 3")
+    print("  PROSPECCAO AUTOMATIZADA")
     print(f"  {PROGRESS_BAR}")
     print("  Auditoria Tecnica do Sistema")
     print("=" * 60)

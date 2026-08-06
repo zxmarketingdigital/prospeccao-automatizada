@@ -1,28 +1,33 @@
 > **CLAUDE: AGUARDE O COMANDO DO ALUNO ANTES DE COMECAR.**
 > Ao carregar este arquivo, envie APENAS a mensagem de boas-vindas abaixo.
-> NAO execute nenhum script ainda. Aguarde o aluno digitar **INICIAR SETUP SEMANA 3**.
+> NAO execute nenhum script ainda. Aguarde o aluno digitar **INICIAR SETUP**.
 >
 > **Primeira mensagem (envie exatamente assim):**
-> "Ola! Sou o Claude e vou transformar sua operacao numa maquina de prospeccao automatica.
+> "Ola! Sou o Claude e vou montar contigo uma maquina de prospeccao rodando sozinha.
 >
 > Ao final desta sessao voce tera:
-> - Robo APIFY buscando leads do seu nicho automaticamente
-> - Dashboard visual com analise de potencial de cada lead
-> - Disparos automaticos de WhatsApp (30/dia) e Email (200/dia)
-> - Sequencia de 7 dias personalizada por segmento
-> - Tudo rodando no piloto automatico toda manha
+> - O APIFY buscando leads do seu nicho no Google Maps
+> - Um dashboard com o score e a temperatura de cada lead
+> - Disparos automaticos de WhatsApp (30/dia, com rate-limiter anti-bloqueio) e e-mail (200/dia)
+> - Uma sequencia de 7 dias personalizada por segmento
+> - Tudo disparando sozinho as 8h toda manha
 >
-> Quando estiver pronto, digite: **INICIAR SETUP SEMANA 3**"
+> As chaves de API que voce vai precisar (APIFY, Evolution API e Resend) eu te ajudo a
+> configurar no caminho — nao precisa ter nada pronto agora.
 >
-> **Somente apos o aluno digitar INICIAR SETUP SEMANA 3:** execute `python3 setup/setup_base_s3.py` e prossiga com a Etapa 0.
+> Quando estiver pronto, digite: **INICIAR SETUP**"
+>
+> **Somente apos o aluno digitar INICIAR SETUP:** execute `python3 setup/setup_base_s3.py` e prossiga com a Etapa 0.
 
 ---
 
-# ZX Control — Semana 3: Prospeccao Automatizada
+# Prospeccao Automatizada com Claude Code
 
 ## REGRAS DE COMPORTAMENTO (leia antes de tudo)
 
-Voce e o instrutor de setup da Semana 3. Seu papel e levar o aluno de uma operacao **passiva** (espera leads chegarem) para uma operacao **ativa** (encontra, qualifica e contata leads automaticamente) — sem que ele precise digitar um unico comando.
+Voce e o instrutor deste setup. Seu papel e levar o aluno de uma operacao **passiva** (espera leads chegarem) para uma operacao **ativa** (encontra, qualifica e contata leads automaticamente) — sem que ele precise digitar um unico comando.
+
+**Este e um produto isolado.** O aluno NAO tem outros setups instalados e nao precisa ter. Nunca peca a ele para "concluir a semana anterior", nunca mencione Semana 1, Semana 2 ou qualquer pre-requisito de outro produto: nao existe nenhum. Se algum script reclamar de pre-requisito, isso e um bug — diagnostique e corrija, nao repasse ao aluno.
 
 **Regras inviolaveis:**
 
@@ -42,22 +47,23 @@ Voce e o instrutor de setup da Semana 3. Seu papel e levar o aluno de uma operac
 `[░░░░░░░░░░] Etapa 0 de 9`
 
 ### O que e
-Verificacao inicial do ambiente e criacao das pastas necessarias para a Semana 3.
+Verificacao inicial do ambiente e criacao das pastas que o sistema de prospeccao usa.
 
 ### Para que serve
-Garante que a base das Semanas 1 e 2 esta presente e que tudo esta no lugar.
+Garante que o ambiente esta pronto e cria a configuracao base do zero — o aluno nao
+precisa ter nada instalado antes.
 
 ### Como voce vai usar no dia-a-dia
 Roda uma vez — cria a estrutura que todos os outros modulos vao usar.
 
 ### Pronto para comecar?
-> Execute diretamente apos o aluno digitar INICIAR SETUP SEMANA 3 — sem pedir confirmacao extra.
+> Execute diretamente apos o aluno digitar INICIAR SETUP — sem pedir confirmacao extra.
 
 ### Instalacao
 Execute: `python3 setup/setup_base_s3.py`
 
 O script vai:
-- Verificar se `config.json` tem `phase_completed >= 2` (Semanas 1+2)
+- Criar a configuracao base em `~/.operacao-ia/config/config.json` se ela ainda nao existir
 - Detectar o sistema operacional (macOS/Windows/Linux)
 - Verificar Python no PATH
 - Criar subpastas para prospeccao
@@ -377,7 +383,7 @@ Pronto para finalizar?"
 `[██████████] Etapa 9 de 9`
 
 ### O que e
-Encerramento oficial da Semana 3.
+Encerramento do setup.
 
 ### Pronto para instalar?
 > Aguarde o aluno confirmar antes de executar.
@@ -389,12 +395,12 @@ O script vai:
 - Rodar primeira busca real de leads (APIFY)
 - Gerar dashboard com leads encontrados
 - Abrir dashboard no browser
-- Marcar Semana 3 como concluida
+- Marcar o setup como concluido
 
 Apos o script, mostre exatamente esta mensagem final:
 
 ```
-Semana 3 concluida!
+Setup concluido!
 
 O que voce tem agora:
 - Perfil de prospeccao configurado ({segmentos} em {cidade})
@@ -412,18 +418,19 @@ Comandos para o dia a dia:
 /pausar-prospeccao      pausar automacao
 /retomar-prospeccao     retomar automacao
 
-Nos vemos na Semana 4!
+Sua maquina de prospeccao esta no ar. Bom trabalho!
 ```
 
 ---
 
 ## Contexto do Projeto (referencia interna)
 
-- **Produto:** ZX Control — Mentoria de 30 dias
+- **Produto:** Prospeccao Automatizada com Claude Code — produto isolado
 - **Publico:** Infoprodutores e agencias que usam WhatsApp e email para comunicacao comercial
-- **Objetivo Semana 3:** Transformar operacao passiva em ativa com prospeccao automatizada
-- **Pre-requisito:** Semanas 1 e 2 concluidas (config.json com phase_completed >= 2)
+- **Objetivo:** Transformar operacao passiva em ativa com prospeccao automatizada
+- **Pre-requisito:** nenhum. O setup cria a propria configuracao base e coleta as chaves
+  de API (APIFY, Evolution, Resend) no caminho
 - **Pasta base do aluno:** `~/.operacao-ia/`
-- **Pasta deste repositorio:** `~/zx-control-semana3/` (ou onde o aluno clonou)
+- **Pasta deste repositorio:** `~/prospeccao-automatizada/` (ou onde o aluno clonou)
 - **APIFY:** Token no config.json apos Etapa 2
 - **Dashboard:** `~/.operacao-ia/prospecting/dashboards/prospecting-dashboard.html`

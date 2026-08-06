@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Utilitarios compartilhados da Semana 3 — ZX Control.
-Adaptado de lib.py da Semana 2, com paths de prospeccao.
+Utilitarios compartilhados da Prospeccao Automatizada.
+Paths e helpers de prospeccao.
 """
 
 import json
@@ -21,7 +21,7 @@ SCRIPTS_DIR = BASE_DIR / "scripts"
 MISSION_CONTROL_DIR = BASE_DIR / "mission-control"
 HEARTBEAT_DIR = LOGS_DIR / "heartbeat"
 
-# Prospecting paths (Semana 3)
+# Prospecting paths
 PROSPECTING_DIR = BASE_DIR / "prospecting"
 PROSPECTING_LEADS_DIR = PROSPECTING_DIR / "leads"
 PROSPECTING_CAMPAIGNS_DIR = PROSPECTING_DIR / "campaigns"

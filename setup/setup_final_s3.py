@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Etapa 9 — Finalizacao da Semana 3
+Etapa 9 — Finalizacao
 Executa primeira busca real, gera dashboard e marca conclusao.
-ZX Control Semana 3
 """
 
 import json
@@ -88,16 +87,40 @@ def run_dashboard_generation():
 
 
 def update_config_phase():
-    """Atualiza config.json com fase 3 completa."""
+    """Registra a conclusao do setup sem avancar fases indevidas."""
     try:
         config = load_config()
-        config["phase_completed"] = 3
-        config["week3"] = {
+        config["prospeccao_completed"] = True
+        config["origem"] = config.get("origem") or "prospeccao-automatizada"
+        config["prospeccao"] = {
             "completed": True,
             "completed_at": now_iso(),
         }
+
+        # phase_completed pertence a outro produto (o curso). Aqui ele so' pode SUBIR,
+        # nunca descer: quem ja concluiu uma fase posterior (4, 5...) nao pode ser
+        # rebaixado para 3 por ter rodado este setup avulso. E quem nunca fez o curso
+        # (fase 0 ou 1) nao passa a alegar que fez as fases anteriores.
+        try:
+            current_phase = int(config.get("phase_completed", 0))
+        except (TypeError, ValueError):
+            current_phase = 0
+
+        new_phase = max(current_phase, 3) if current_phase >= 2 else current_phase
+        if new_phase != current_phase:
+            config["phase_completed"] = new_phase
+
         save_config(config)
-        print("  [OK] config.json atualizado: phase_completed=3")
+        if new_phase != current_phase:
+            print(
+                "  [OK] config.json atualizado: prospeccao_completed=True, "
+                f"origem definida, phase_completed={new_phase}"
+            )
+        else:
+            print(
+                "  [OK] config.json atualizado: prospeccao_completed=True, "
+                f"origem definida (phase_completed preservado em {current_phase})"
+            )
         return True
     except FileNotFoundError:
         print("  [AVISO] config.json nao encontrado. Nao foi possivel atualizar fase.")
@@ -121,7 +144,7 @@ def print_final_message(profile, lead_count):
 
     print()
     print("=" * 60)
-    print("  SEMANA 3 CONCLUIDA COM SUCESSO!")
+    print("  SETUP CONCLUIDO COM SUCESSO!")
     print("=" * 60)
     print()
     print(f"  Agencia  : {agency}")
@@ -148,7 +171,7 @@ def print_final_message(profile, lead_count):
 def main():
     print()
     print("=" * 60)
-    print("  ZX CONTROL — SEMANA 3")
+    print("  PROSPECCAO AUTOMATIZADA")
     print(f"  {PROGRESS_BAR}")
     print("  Finalizacao e Primeira Execucao Real")
     print("=" * 60)
@@ -191,7 +214,7 @@ def main():
     print_final_message(profile, lead_count)
 
     # Mark checkpoint
-    mark_checkpoint("step_9_final", "done", f"Semana 3 concluida — {lead_count} leads")
+    mark_checkpoint("step_9_final", "done", f"Setup concluido — {lead_count} leads")
 
     print("  Checkpoint step_9_final registrado.")
     print()

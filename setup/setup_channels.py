@@ -2,7 +2,7 @@
 """
 Etapa 3 — Verificar e configurar canais de disparo: WhatsApp (Evolution API)
 e Email (Resend) + instalar rate limiter.
-ZX Control Semana 3
+Prospeccao Automatizada
 """
 
 import getpass

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 prospecting_engine.py — Motor principal de prospeccao automatizada.
-Semana 3 — ZX Control.
+Prospeccao Automatizada.
 
 Uso:
     python3 prospecting_engine.py --search
@@ -672,7 +672,7 @@ def action_daily(config: dict, dry_run: bool, limit: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Motor de prospeccao automatizada — ZX Control Semana 3"
+        description="Motor de prospeccao automatizada — Prospeccao Automatizada"
     )
 
     group = parser.add_mutually_exclusive_group(required=True)

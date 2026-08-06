@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Etapa 6 — Instalar motor de prospeccao e executar dry-run.
-ZX Control Semana 3
+Prospeccao Automatizada
 """
 
 import shutil
