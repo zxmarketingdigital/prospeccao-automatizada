@@ -7,7 +7,7 @@ Uma máquina de prospecção rodando sozinha: o APIFY busca leads do seu nicho n
 - Claude Code instalado
 - GitHub CLI (`gh`)
 - Python 3.9+
-- macOS (Linux e Windows funcionam parcialmente — o agendamento diário muda de mecanismo)
+- Mac, Windows ou Linux (o agendamento diário é configurado automaticamente pro seu sistema: LaunchAgent no Mac, Agendador de Tarefas no Windows; no Linux o setup te entrega o comando de cron pronto pra copiar)
 - Chaves de API que o próprio setup te ajuda a configurar no caminho: APIFY (busca de leads), Evolution API (WhatsApp) e Resend (e-mail)
 
 ## Instalação
