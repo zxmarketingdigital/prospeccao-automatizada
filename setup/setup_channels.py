@@ -18,6 +18,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parent
 sys.path.insert(0, str(ROOT_DIR / "scripts"))
+sys.path.insert(0, str(SCRIPT_DIR))
+import evolution_local
 from lib import (
     CONFIG_PATH,
     PLATFORM,
@@ -150,10 +152,40 @@ def setup_whatsapp(config):
                 return config
     else:
         print("  Credenciais da Evolution API nao encontradas.\n")
-        print("  Voce precisa de uma instancia da Evolution API rodando.")
-        print("  Exemplo de URL: http://localhost:8080 ou https://sua-api.com\n")
 
-    # Coletar dados
+    # Escolher o caminho
+    print("  A Evolution API e' a ponte que permite enviar WhatsApp pelo seu numero.")
+    print("  Como voce quer configurar?\n")
+    print("    1. Instalar agora no meu computador (recomendado)")
+    print("       Precisa do Docker. Eu instalo a Evolution e conecto seu numero por QR Code.")
+    print("    2. Ja tenho uma Evolution API rodando (informar URL e chave)")
+    print("    3. Pular o WhatsApp por enquanto\n")
+    while True:
+        escolha = ask("  Opcao (1-3)", "1")
+        if escolha in ("1", "2", "3"):
+            break
+        print("  Opcao invalida. Digite 1, 2 ou 3.")
+
+    if escolha == "3":
+        print("  Pulando configuracao do WhatsApp. Voce pode rodar a Etapa 3 de novo depois.\n")
+        return config
+
+    if escolha == "1":
+        while True:
+            if evolution_local.install_and_connect(config):
+                print("  WhatsApp conectado!\n")
+                return config
+            retry = ask("  Tentar de novo? (s = tentar, n = pular o WhatsApp)", "n").lower()
+            if retry != "s":
+                print("  Pulando configuracao do WhatsApp. Voce pode rodar a Etapa 3 de novo depois.\n")
+                return config
+
+    print("  Exemplo de URL: http://localhost:8080 ou https://sua-api.com\n")
+    return _collect_existing_evolution(config)
+
+
+def _collect_existing_evolution(config):
+    """Fluxo 'ja tenho Evolution': pede URL e chave e testa."""
     while True:
         url = ask("  URL da Evolution API (ex: http://localhost:8080)").rstrip("/")
         key = getpass.getpass("  API Key da Evolution API (oculto): ").strip()
@@ -240,8 +272,14 @@ def setup_email(config):
                 return config
     else:
         print("  Chave Resend nao encontrada.\n")
-        print("  Crie sua conta gratuita em https://resend.com")
-        print("  Va em API Keys > Create API Key\n")
+        print("  A Resend e' o servico que envia seus e-mails (plano gratuito, sem cartao).")
+        print("  Passo a passo:")
+        print("    1. Crie sua conta em https://resend.com e confirme o e-mail.")
+        print("    2. No painel, abra API Keys > Create API Key.")
+        print("    3. De um nome (ex: prospeccao), permissao 'Full access' e clique em Add.")
+        print("    4. Copie a chave (comeca com 're_') agora: ela so' aparece uma vez.")
+        print("  Para enviar so' para voce mesmo (testes) nao precisa de dominio.")
+        print("  Para enviar a seus leads, verifique um dominio seu em Domains.\n")
 
     # Coletar dados
     while True:
@@ -325,6 +363,7 @@ def main():
 
     # Configurar canais
     config = setup_whatsapp(config)
+    save_config(config)  # grava ja' o WhatsApp: nao perde a chave se o e-mail for interrompido
     config = setup_email(config)
 
     # Salvar config atualizado

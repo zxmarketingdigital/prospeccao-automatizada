@@ -2,11 +2,11 @@
 """
 Teste de regressao do modo STANDALONE.
 
-Este produto ja' foi, um dia, a Semana 3 de um curso. Naquela versao o setup
-fazia sys.exit(1) quando ~/.operacao-ia/config/config.json nao existia ou quando
+Este produto e' vendido avulso. Uma versao antiga do setup fazia sys.exit(1)
+quando ~/.operacao-ia/config/config.json nao existia ou quando
 config["phase_completed"] era menor que 2 — artefatos que o comprador avulso nao
 tem e nunca tera. O resultado era o setup morrer no primeiro comando, mandando o
-aluno para uma pasta (~/zx-control-semana1/) que ele nao possui.
+aluno para uma pasta que ele nao possui.
 
 Se alguem reintroduzir esse acoplamento, este teste fica vermelho.
 
@@ -56,7 +56,7 @@ def rodar_base(home, config=None, raw=None):
 
 
 def test_etapa_zero():
-    print("\nEtapa 0 — nao pode exigir nenhum setup anterior:")
+    print("\nEtapa 0 — nao pode exigir nenhum pre-requisito:")
 
     with tempfile.TemporaryDirectory() as home:
         rc, out = rodar_base(home)
@@ -130,12 +130,190 @@ def test_conclusao_nao_mente_sobre_o_curso():
             check("marca a conclusao deste produto", depois.get("prospeccao_completed") is True)
 
 
+def _carregar_canais(home):
+    """Importa lib, evolution_local e setup_channels apontando para um HOME descartavel."""
+    import importlib
+    import os
+    os.environ["HOME"] = home
+    os.environ["USERPROFILE"] = home
+    sys.path.insert(0, str(REPO / "scripts"))
+    sys.path.insert(0, str(REPO / "setup"))
+    import lib
+    importlib.reload(lib)
+    evo = importlib.import_module("evolution_local")
+    importlib.reload(evo)
+    canais = importlib.import_module("setup_channels")
+    importlib.reload(canais)
+    return lib, evo, canais
+
+
+def _com_respostas(respostas, fn, *args):
+    """Roda fn com input() respondendo em ordem; devolve (resultado, stdout)."""
+    import builtins
+    it = iter(respostas)
+    original = builtins.input
+    builtins.input = lambda *_a, **_k: next(it)
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            return fn(*args), buf.getvalue()
+    finally:
+        builtins.input = original
+
+
+def test_canais_sem_instalacao_previa():
+    print("\nEtapa 3 — WhatsApp e e-mail do zero, sem rede e sem Docker real:")
+    with tempfile.TemporaryDirectory() as home:
+        lib, evo, canais = _carregar_canais(home)
+        check("evolution_local carregado deste repo", str(evo.__file__).startswith(str(REPO)))
+        check("arquivos da Evolution ficam no HOME descartavel",
+              str(evo.EVOLUTION_DIR).startswith(home))
+
+        # Orientacao de Docker por sistema, com objetivo e sem favorecer um SO.
+        for so, termo in [("Darwin", "Docker Desktop"), ("Windows", "Docker Desktop"),
+                          ("Linux", "docker-compose-plugin")]:
+            txt = "\n".join(evo.docker_guidance("missing", so))
+            check(f"orientacao de Docker ausente ({so})", termo in txt and "https://" in txt)
+        check("orientacao de Docker parado (Linux) manda iniciar o servico",
+              "systemctl" in "\n".join(evo.docker_guidance("stopped", "Linux")))
+        check("orientacao de Docker parado (Mac/Windows) manda abrir o app",
+              "Docker Desktop" in "\n".join(evo.docker_guidance("stopped", "Windows")))
+
+        # Docker ausente: nao toca em disco nem em rede, devolve False com orientacao.
+        evo.docker_state = lambda: "missing"
+        cfg = {}
+        ok, out = _com_respostas([], evo.install_and_connect, cfg)
+        check("sem Docker a instalacao nao avanca", ok is False and cfg == {})
+        check("sem Docker mostra o que fazer", "nao esta instalado" in out)
+        check("sem Docker nada foi escrito", not evo.EVOLUTION_DIR.exists())
+
+        # Geracao dos arquivos: segredos novos, .env privado, porta so' local.
+        k1 = evo.write_files()
+        k2 = evo.write_files()
+        check("API key gerada e reaproveitada", len(k1) == 32 and k1 == k2)
+        check("compose expoe a porta so' em 127.0.0.1",
+              "127.0.0.1:8080:8080" in evo.COMPOSE_PATH.read_text())
+        if sys.platform != "win32":
+            check(".env nao e' legivel por terceiros (0600)",
+                  (evo.ENV_PATH.stat().st_mode & 0o077) == 0)
+
+        # Instalacao feliz (rede e Docker simulados).
+        evo.docker_state = lambda: "ok"
+        evo.evolution_is_up = lambda *_a, **_k: True  # Evolution deste setup respondendo
+        evo.ensure_instance = lambda key: True
+        evo.connection_state = lambda key: "open"
+        cfg = {}
+        ok, _ = _com_respostas([], evo.install_and_connect, cfg)
+        check("instalacao concluida preenche o config",
+              ok is True and cfg.get("evolution_api_url") == "http://localhost:8080"
+              and cfg.get("evolution_api_key") == k1 and cfg.get("evolution_instance") == evo.INSTANCE_NAME)
+
+        # QR: extracao dos formatos conhecidos.
+        check("QR em base64 direto", evo.extract_qr_base64({"base64": "AAA"}) == "AAA")
+        check("QR aninhado", evo.extract_qr_base64({"qrcode": {"base64": "BBB"}}) == "BBB")
+        check("QR 'code' de pareamento nao e' tratado como imagem",
+              evo.extract_qr_base64({"qrcode": {"code": "2@abc"}}) == "")
+        check("QR base64 invalido nao derruba", evo.save_and_open_qr("%%nao-e-base64%%") is False)
+        check("QR ausente", evo.extract_qr_base64({}) == "" and evo.extract_qr_base64(None) == "")
+
+        # Timeout vem de ambiente, invalido/zero cai no padrao.
+        import os
+        for valor, esperado in [("30", 30.0), ("abc", 7.0), ("0", 7.0), ("-5", 7.0), ("inf", 7.0), ("nan", 7.0)]:
+            os.environ["PROSPECCAO_T"] = valor
+            check(f"timeout por env '{valor}'", evo._env_seconds("PROSPECCAO_T", 7.0) == esperado)
+        os.environ.pop("PROSPECCAO_T", None)
+
+        # Menu do setup_whatsapp.
+        def sem_rede(*_a, **_k):
+            raise AssertionError("rede nao deveria ser usada")
+        canais.test_evolution = sem_rede
+
+        cfg, out = _com_respostas(["3"], canais.setup_whatsapp, {})
+        check("opcao pular nao configura nada", cfg == {} and "Pulando" in out)
+
+        cfg, _ = _com_respostas([""], canais.setup_whatsapp, {})  # Enter = padrao = instalar
+        check("padrao do menu e' instalar agora", cfg.get("evolution_instance") == evo.INSTANCE_NAME)
+
+        evo.install_and_connect = lambda c: False
+        cfg, out = _com_respostas(["1", "n"], canais.setup_whatsapp, {})
+        check("instalacao que falha pode ser pulada", cfg == {} and "Pulando" in out)
+
+        chamadas = []
+        def falha_e_depois_ok(c):
+            chamadas.append(1)
+            if len(chamadas) == 1:
+                return False
+            c["evolution_instance"] = "x"
+            return True
+        evo.install_and_connect = falha_e_depois_ok
+        cfg, _ = _com_respostas(["1", "s"], canais.setup_whatsapp, {})
+        check("falha seguida de nova tentativa funciona", len(chamadas) == 2 and cfg.get("evolution_instance") == "x")
+
+        cfg, out = _com_respostas(["9", "3"], canais.setup_whatsapp, {})
+        check("opcao invalida pergunta de novo", "invalida" in out and cfg == {})
+
+        # "Ja tenho Evolution": fluxo antigo preservado.
+        canais.test_evolution = lambda url, key: (True, [{"name": "minha"}])
+        import getpass
+        gp = getpass.getpass
+        getpass.getpass = lambda *_a, **_k: "CHAVE1234"
+        try:
+            cfg, _ = _com_respostas(["2", "http://exemplo:8080/"], canais.setup_whatsapp, {})
+        finally:
+            getpass.getpass = gp
+        check("ja tenho Evolution salva URL, chave e instancia",
+              cfg.get("evolution_api_url") == "http://exemplo:8080"
+              and cfg.get("evolution_api_key") == "CHAVE1234" and cfg.get("evolution_instance") == "minha")
+
+        # E-mail: orienta criar conta e chave do zero e permite pular.
+        canais.test_resend = sem_rede
+        import getpass as g2
+        cfg = {}
+        try:
+            # so' conferimos o texto exibido antes de pedir a chave
+            def corta(*_a, **_k):
+                raise KeyboardInterrupt
+            g2.getpass = corta
+            buf = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(buf):
+                    canais.setup_email(cfg)
+            except KeyboardInterrupt:
+                pass
+        finally:
+            g2.getpass = gp
+        txt = buf.getvalue()
+        check("e-mail ensina a criar conta e chave", "https://resend.com" in txt
+              and "Create API Key" in txt and "Full access" in txt)
+
+
+def test_sem_referencia_a_outro_setup():
+    print("\nNenhum arquivo do produto manda o aluno para outro setup:")
+    proibidos = ["semana" + "1", "semana-" + "1", "zx-control-" + "semana", "setup " + "anterior",
+                 "Semana " + "1", "Semana " + "2", "semana " + "anterior"]
+    achados = []
+    for arq in subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True,
+                              text=True).stdout.splitlines():
+        if arq == "HISTORICO-SESSOES.md" or not arq.endswith((".py", ".md", ".json", ".sql", ".html", ".yml")):
+            continue
+        try:
+            txt = (REPO / arq).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for termo in proibidos:
+            if termo.lower() in txt.lower():
+                achados.append(f"{arq}: {termo}")
+    check("nenhuma referencia a outro setup ou semana de curso", not achados, "; ".join(achados))
+
+
 def main():
     print("=" * 62)
     print("  Teste de regressao — modo STANDALONE")
     print("=" * 62)
     test_etapa_zero()
     test_conclusao_nao_mente_sobre_o_curso()
+    test_canais_sem_instalacao_previa()
+    test_sem_referencia_a_outro_setup()
     print()
     if falhas:
         print(f"  {len(falhas)} verificacao(oes) FALHARAM:")
