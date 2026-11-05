@@ -310,6 +310,8 @@ def connection_state(api_key):
         r = _request(f"{EVOLUTION_URL}/instance/connectionState/{INSTANCE_NAME}", api_key)
     except Exception:
         return None
+    if not isinstance(r, dict):
+        return None
     return r.get("state") or (r.get("instance") or {}).get("state")
 
 
