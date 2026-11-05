@@ -194,6 +194,8 @@ def test_canais_sem_instalacao_previa():
         check("compose expoe a porta so' em 127.0.0.1",
               "127.0.0.1:8080:8080" in evo.COMPOSE_PATH.read_text())
         if sys.platform != "win32":
+            check("pasta da Evolution so' do usuario (0700)",
+                  (evo.EVOLUTION_DIR.stat().st_mode & 0o077) == 0)
             check(".env nao e' legivel por terceiros (0600)",
                   (evo.ENV_PATH.stat().st_mode & 0o077) == 0)
 

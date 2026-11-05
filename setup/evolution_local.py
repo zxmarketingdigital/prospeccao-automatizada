@@ -150,6 +150,8 @@ def _read_env_value(nome):
 def write_files():
     """Gera .env (segredos gerados na hora, so' seus) e docker-compose.yml. Devolve a API key."""
     EVOLUTION_DIR.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt":
+        os.chmod(EVOLUTION_DIR, 0o700)  # guarda a sessao do WhatsApp (store/) e a chave
     api_key = _read_env_value("AUTHENTICATION_API_KEY") or secrets.token_hex(16).upper()
     jwt_secret = _read_env_value("JWT_SECRET") or secrets.token_urlsafe(48)
 
