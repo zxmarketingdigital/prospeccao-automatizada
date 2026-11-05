@@ -128,8 +128,8 @@ def evolution_is_up(api_key, base_url=EVOLUTION_URL):
     Outro programa na porta 8080 (ou uma Evolution antiga com outra chave) nao conta.
     """
     try:
-        _request(base_url + "/instance/fetchInstances", api_key, timeout=3)
-        return True
+        # A Evolution devolve uma LISTA de instancias; outro servico nao imita isso.
+        return isinstance(_request(base_url + "/instance/fetchInstances", api_key, timeout=3), list)
     except Exception:
         return False
 

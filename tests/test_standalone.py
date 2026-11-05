@@ -197,6 +197,14 @@ def test_canais_sem_instalacao_previa():
             check(".env nao e' legivel por terceiros (0600)",
                   (evo.ENV_PATH.stat().st_mode & 0o077) == 0)
 
+        # Identidade da API: so' uma LISTA de instancias conta como a Evolution.
+        evo_req = evo._request
+        evo._request = lambda *a, **k: {"status": 200}
+        check("servico estranho na 8080 nao e' a Evolution", evo.evolution_is_up("k") is False)
+        evo._request = lambda *a, **k: []
+        check("lista de instancias e' a Evolution", evo.evolution_is_up("k") is True)
+        evo._request = evo_req
+
         # Instalacao feliz (rede e Docker simulados).
         evo.docker_state = lambda: "ok"
         evo.evolution_is_up = lambda *_a, **_k: True  # Evolution deste setup respondendo

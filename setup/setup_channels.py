@@ -350,6 +350,13 @@ def install_rate_limiter():
 # Main
 # ---------------------------------------------------------------------------
 
+def _salvar_config(config):
+    """Salva e restringe a permissao (0600) imediatamente: o arquivo guarda chaves de API."""
+    save_config(config)
+    if os.name != "nt" and CONFIG_PATH.exists():
+        os.chmod(CONFIG_PATH, 0o600)
+
+
 def main():
     progress_bar()
 
@@ -363,13 +370,11 @@ def main():
 
     # Configurar canais
     config = setup_whatsapp(config)
-    save_config(config)  # grava ja' o WhatsApp: nao perde a chave se o e-mail for interrompido
+    _salvar_config(config)  # grava ja' o WhatsApp: nao perde a chave se o e-mail for interrompido
     config = setup_email(config)
 
     # Salvar config atualizado
-    save_config(config)
-    if os.name != "nt" and CONFIG_PATH.exists():
-        os.chmod(CONFIG_PATH, 0o600)
+    _salvar_config(config)
     print("  config.json atualizado.\n")
 
     # Instalar rate limiter
