@@ -8,7 +8,8 @@ Uma máquina de prospecção rodando sozinha: o APIFY busca leads do seu nicho n
 - GitHub CLI (`gh`)
 - Python 3.9+
 - Mac, Windows ou Linux (o agendamento diário é configurado automaticamente pro seu sistema: LaunchAgent no Mac, Agendador de Tarefas no Windows; no Linux o setup te entrega o comando de cron pronto pra copiar)
-- Chaves de API que o próprio setup te ajuda a configurar no caminho: APIFY (busca de leads), Evolution API (WhatsApp) e Resend (e-mail)
+- Docker (Docker Desktop no Mac e no Windows, Docker Engine no Linux): usado para instalar a Evolution API, a ponte do WhatsApp. Se faltar, a Etapa 3 mostra o passo a passo
+- Contas e chaves que o próprio setup te ensina a criar no caminho: APIFY (busca de leads) e Resend (e-mail). O WhatsApp conecta por QR Code, sem chave externa
 
 ## Instalação
 
@@ -26,6 +27,7 @@ A partir daí o setup é guiado — 9 etapas, cada uma com explicação, execuç
 
 - **Motor de prospecção** que busca e qualifica leads
 - **Scraper APIFY** do Google Maps por nicho
+- **Evolution API** no seu computador, com seu WhatsApp conectado por QR Code
 - **Rate-limiter anti-bloqueio** (30 WhatsApp/dia, 200 e-mails/dia)
 - **Gerador de mensagens personalizadas** por segmento
 - **Dashboard** com score e temperatura de cada lead
@@ -46,7 +48,7 @@ A partir daí o setup é guiado — 9 etapas, cada uma com explicação, execuç
 ```
 prospeccao-automatizada/
 ├── CLAUDE.md          Roteiro que o Claude segue durante o setup
-├── setup/             Os 10 scripts das etapas do setup
+├── setup/             Os scripts das etapas do setup (inclui o instalador da Evolution API)
 ├── scripts/           Motor de prospecção, scraper, rate limiter, gerador de copy
 ├── skills/            As 4 skills do dia a dia
 ├── sql/               Schema opcional para sincronizar os prospects na nuvem

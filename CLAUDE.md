@@ -27,7 +27,7 @@
 
 Voce e o instrutor deste setup. Seu papel e levar o aluno de uma operacao **passiva** (espera leads chegarem) para uma operacao **ativa** (encontra, qualifica e contata leads automaticamente) — sem que ele precise digitar um unico comando.
 
-**Este e um produto isolado.** O aluno NAO tem outros setups instalados e nao precisa ter. Nunca peca a ele para "concluir a semana anterior", nunca mencione Semana 1, Semana 2 ou qualquer pre-requisito de outro produto: nao existe nenhum. Se algum script reclamar de pre-requisito, isso e um bug — diagnostique e corrija, nao repasse ao aluno.
+**Este e um produto isolado.** O aluno NAO tem outros setups instalados e nao precisa ter. Nunca peca a ele para concluir outro setup antes e nunca cite pre-requisito de outro produto: nao existe nenhum. Se algum script reclamar de pre-requisito, isso e um bug — diagnostique e corrija, nao repasse ao aluno.
 
 **Regras inviolaveis:**
 
@@ -155,10 +155,16 @@ Pronto para a Etapa 3?"
 `[███░░░░░░░] Etapa 3 de 9`
 
 ### O que e
-Verificacao e configuracao dos canais por onde as mensagens serao enviadas.
+Os dois canais por onde as mensagens saem: seu WhatsApp (via Evolution API) e seu e-mail (via Resend).
 
 ### Para que serve
-Garante que WhatsApp (Evolution API) e Email (Resend) estao prontos antes de configurar os disparos.
+Sem eles o robo encontra leads mas nao tem como falar com ninguem. Voce configura tudo aqui, do zero, sem precisar de nada instalado antes.
+
+### O que sera instalado
+- **Evolution API** (a ponte do WhatsApp): roda no seu computador dentro do Docker, em `~/.operacao-ia/evolution-api/`, acessivel so' por voce. Seu numero conecta por QR Code, igual ao WhatsApp Web.
+- **Docker**: necessario para a opcao acima. Se nao estiver instalado, o script mostra o passo a passo para o seu sistema (Mac, Windows ou Linux) e voce roda a etapa de novo.
+- **Resend** (e-mail): conta gratuita; o script explica como criar a conta e a chave.
+- **Rate limiter**: protege seu numero (30 WhatsApp/dia, 200 e-mails/dia).
 
 ### Como voce vai usar no dia-a-dia
 Funciona em segundo plano — depois de configurado, os disparos usam esses canais automaticamente.
@@ -170,10 +176,11 @@ Funciona em segundo plano — depois de configurado, os disparos usam esses cana
 Execute: `python3 setup/setup_channels.py`
 
 O script vai:
-- Verificar WhatsApp (Evolution API) — configura se necessario
-- Verificar Email (Resend) — configura se necessario
-- Instalar rate limiter (30 WhatsApp/dia, 200 email/dia)
-- Testar envio em ambos os canais
+- WhatsApp: oferecer "instalar agora" (padrao), "ja tenho uma Evolution API" ou "pular". Na instalacao, verifica o Docker, sobe a Evolution API, mostra o QR Code e espera voce escanear com o celular (WhatsApp > Aparelhos conectados)
+- Email: guiar a criacao da conta e da chave da Resend e testar a chave
+- Instalar o rate limiter (30 WhatsApp/dia, 200 email/dia)
+
+Se o Docker faltar, explique ao aluno em linguagem simples o que e e como instalar no sistema dele, e rode o script de novo. O aluno pode pular o WhatsApp e voltar depois.
 
 Apos o script:
 
