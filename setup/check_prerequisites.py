@@ -5,7 +5,7 @@ check_prerequisites.py — Valida o ambiente do aluno antes de instalar o Prospe
 É a PRIMEIRA coisa que o Claude do aluno roda. Idempotente: pode rodar quantas
 vezes quiser. Compatível com Python 3.9 (não use `str | None` nem `match/case`).
 
-Não exige nenhum setup anterior: só confere as ferramentas básicas (Python, git) e cria a pasta de config.
+Funciona sozinho, sem nenhum outro produto instalado: só confere as ferramentas básicas (Python, git) e cria a pasta de config.
 """
 import os
 import shutil
