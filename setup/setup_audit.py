@@ -77,6 +77,15 @@ def _http_get(url, headers=None, timeout=8):
         return None, str(e)
 
 
+def _step_skipped(prefix):
+    """True se o aluno pulou essa etapa de proposito (checkpoint 'skipped')."""
+    try:
+        steps = json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8")).get("steps", {})
+    except Exception:
+        return False
+    return any(k.startswith(prefix) and v.get("status") == "skipped" for k, v in steps.items())
+
+
 def check_config():
     """1. Config completo"""
     if not CONFIG_PATH.exists():
@@ -86,9 +95,13 @@ def check_config():
         missing = [k for k in REQUIRED_CONFIG_KEYS if not cfg.get(k)]
         if missing:
             return False, f"Chaves ausentes: {', '.join(missing)}", None
-        whatsapp_configured = all(cfg.get(k) for k in WHATSAPP_CONFIG_KEYS)
+        whatsapp_configured = all(cfg.get(k) for k in WHATSAPP_CONFIG_KEYS) or bool(
+            cfg.get("uazapi_url") and cfg.get("uazapi_token")
+        )
         email_configured = bool(cfg.get(EMAIL_CONFIG_KEY))
         if not whatsapp_configured and not email_configured:
+            if _step_skipped("step_3_"):
+                return True, "Chaves obrigatorias presentes (canais pulados pelo aluno: so' busca de leads)", cfg
             return False, "Ao menos um canal (WhatsApp ou Email) precisa estar configurado", None
         missing_channels = []
         if not whatsapp_configured:
@@ -130,6 +143,17 @@ def check_apify(config):
 
 def check_whatsapp(config):
     """4. WhatsApp ativo"""
+    uaz_url = config.get("uazapi_url", "").rstrip("/")
+    uaz_token = config.get("uazapi_token", "")
+    if uaz_url and uaz_token:
+        status, body = _http_get(f"{uaz_url}/instance/status", headers={"token": uaz_token})
+        if status != 200:
+            return False, f"HTTP {status} - verificar URL/token da UAZAPI"
+        connected = '"connected": true' in str(body).lower() or "'connected': true" in str(body).lower()
+        trava = "envio para leads LIBERADO" if config.get("whatsapp_auto_send") else "envio para leads travado"
+        if connected or '"status":"connected"' in str(body).replace(" ", "").lower():
+            return True, f"UAZAPI conectada ({trava})"
+        return False, "UAZAPI respondeu, mas o WhatsApp nao esta conectado (ler QR Code no painel)"
     url = config.get("evolution_api_url", "").rstrip("/")
     key = config.get("evolution_api_key", "")
     if not url or not key:
@@ -171,6 +195,8 @@ def check_templates():
     if not PROSPECTING_TEMPLATES_DIR.exists():
         return False, "Diretorio de templates nao existe"
     templates = list(PROSPECTING_TEMPLATES_DIR.glob("*.json"))
+    if not templates and _step_skipped("step_4_"):
+        return True, "Etapa de mensagens pulada pelo aluno (gerar junto com os canais)"
     if not templates:
         return False, "Nenhum arquivo .json encontrado em templates/"
     valid = []
@@ -206,15 +232,15 @@ def check_scripts():
 def check_automation():
     """10. Automacao agendada"""
     if PLATFORM == "Darwin":
-        plist_path = Path.home() / "Library" / "LaunchAgents" / "com.operacao-ia.prospecting.plist"
+        plist_path = Path.home() / "Library" / "LaunchAgents" / "com.operacao-ia.prospecting-daily.plist"
         if plist_path.exists():
             return True, f"LaunchAgent encontrado: {plist_path.name}"
         return False, "LaunchAgent nao encontrado em ~/Library/LaunchAgents/"
     elif PLATFORM == "Windows":
         import subprocess
         result = subprocess.run(
-            ["schtasks", "/query", "/tn", "OperacaoIA-Prospecting"],
-            capture_output=True, text=True
+            ["schtasks", "/query", "/tn", "OperacaoIA-Prospecting-Daily"],
+            capture_output=True, text=True, errors="replace",
         )
         if result.returncode == 0:
             return True, "Tarefa agendada encontrada no Windows"
@@ -262,7 +288,7 @@ def check_checkpoints():
     try:
         data = json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
         steps = data.get("steps", {})
-        done = [k for k, v in steps.items() if v.get("status") == "done"]
+        done = [k for k, v in steps.items() if v.get("status") in ("done", "skipped")]
         # Checkpoints gravados com nome completo (ex: step_1_profile, step_2_apify)
         # usa prefix matching para tolerar variacao de sufixo
         expected_prefixes = [f"step_{i}_" for i in range(1, 8)]

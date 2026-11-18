@@ -11,6 +11,20 @@ Reativa a automacao diaria de prospeccao apos uma pausa.
 
 ## Execucao
 
+### Windows
+
+```bash
+schtasks //change //tn "OperacaoIA-Prospecting-Daily" //enable
+schtasks //change //tn "OperacaoIA-Dashboard-Refresh" //enable
+schtasks //change //tn "OperacaoIA-Reply-Detector" //enable
+```
+
+(No Git Bash as barras dos parametros sao duplas `//`; no cmd/PowerShell use `/`.)
+
+Se a tarefa nao existir (erro "nao foi possivel encontrar"), recrie rodando o setup da
+automacao a partir da pasta do repositorio:
+`PYTHONUTF8=1 python setup/setup_automation.py`
+
 ### macOS
 
 ```bash
@@ -18,37 +32,11 @@ launchctl load ~/Library/LaunchAgents/com.operacao-ia.prospecting-daily.plist
 launchctl load ~/Library/LaunchAgents/com.operacao-ia.prospecting-dashboard-refresh.plist
 ```
 
-### Windows
+Se os plists nao existirem, re-execute `python3 setup/setup_automation.py`.
 
-```cmd
-schtasks /create /tn "OperacaoIA-Prospecting-Daily" /tr "python \"%USERPROFILE%\.operacao-ia\scripts\prospecting_engine.py\" --daily" /sc daily /st 08:00 /f
-schtasks /create /tn "OperacaoIA-Dashboard-Refresh" /tr "python \"%USERPROFILE%\.operacao-ia\scripts\prospecting_engine.py\" --dashboard" /sc minute /mo 30 /f
-```
+## Confirmar
 
-## O que acontece
+Windows: `schtasks //query //tn "OperacaoIA-Prospecting-Daily"` deve mostrar "Pronto"/"Ready".
 
-- A automacao diaria das 08:00 e reativada
-- O refresh do dashboard de 30 em 30 minutos volta a funcionar
-- Na proxima execucao agendada, o motor busca novos leads e dispara
-- Tudo funciona como antes da pausa
-
-## Verificar se esta ativo
-
-### macOS
-
-```bash
-launchctl list | grep operacao-ia
-```
-
-### Windows
-
-```cmd
-schtasks /query /tn "OperacaoIA-Prospecting-Daily"
-```
-
-## Observacoes
-
-- Use `/pausar-prospeccao` para suspender a automacao novamente
-- Se os plists nao existirem (macOS), re-execute: `python3 prospeccao-automatizada/setup/setup_automation.py`
-- Para executar imediatamente sem esperar o horario agendado:
-  `python3 ~/.operacao-ia/scripts/prospecting_engine.py --daily`
+Diga ao aluno: automacao reativada; a proxima busca roda as 8h (ou assim que o PC ligar,
+se estiver desligado nesse horario).

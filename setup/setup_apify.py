@@ -244,8 +244,13 @@ def main():
 
     # Carregar perfil para montar query de busca
     profile = load_profile()
-    segments = profile.get("segments", [])
-    city = profile.get("city") or profile.get("location") or ""
+    segments = profile.get("target_segments") or profile.get("segments", [])
+    city = (
+        profile.get("target_location")
+        or profile.get("city")
+        or profile.get("location")
+        or ""
+    )
 
     if not city:
         city = ask("  Qual cidade para a busca de teste?", "Fortaleza")

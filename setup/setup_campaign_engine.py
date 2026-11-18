@@ -4,6 +4,7 @@ Etapa 6 — Instalar motor de prospeccao e executar dry-run.
 Prospeccao Automatizada
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -59,6 +60,8 @@ SCRIPTS_TO_COPY = [
     "copy_generator.py",
     "apify_scraper.py",
     "rate_limiter.py",
+    "lib.py",
+    "reply_detector.py",  # detector de respostas (UAZAPI)  # todos os scripts acima importam lib; sem ele nada roda em ~/.operacao-ia/scripts
 ]
 
 
@@ -82,14 +85,10 @@ def install_scripts():
             continue
 
         if dest.exists():
-            # Sempre atualiza o engine principal; pula os auxiliares se ja existem
-            if script_name == "prospecting_engine.py":
-                shutil.copy2(src, dest)
-                copied.append(script_name)
-                print(f"  [atualizado] {script_name} → {dest}")
-            else:
-                skipped.append(script_name)
-                print(f"  [ja existe]  {script_name} em {dest}")
+            # Sempre atualiza: uma copia antiga de um auxiliar quebraria o engine novo
+            shutil.copy2(src, dest)
+            copied.append(script_name)
+            print(f"  [atualizado] {script_name} → {dest}")
         else:
             shutil.copy2(src, dest)
             copied.append(script_name)
@@ -121,14 +120,19 @@ def run_dry_run():
         print("  O dry-run sera possivel apos instalar o script nas proximas aulas.\n")
         return
 
-    print(f"  Executando: python3 {engine_path} --dry-run\n")
+    print(f"  Executando: python3 {engine_path} --send --dry-run\n")
     print("  " + "-" * 55)
 
+    # UTF-8 forcado: no Windows o console padrao (cp1252) quebra com acentos/simbolos
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     result = subprocess.run(
-        [sys.executable, str(engine_path), "--dry-run"],
+        [sys.executable, str(engine_path), "--send", "--dry-run"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=60,
+        env=env,
     )
 
     if result.stdout:

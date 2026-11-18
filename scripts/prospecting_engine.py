@@ -161,7 +161,7 @@ def _get_pending_prospects(conn: sqlite3.Connection, limit: int):
         SELECT * FROM prospects
         WHERE current_step < 7
           AND responded = 0
-          AND (status = 'novo' OR status = 'em_sequencia')
+          AND lower(COALESCE(status, 'novo')) IN ('novo', 'em sequencia', 'em_sequencia')
         ORDER BY score DESC, current_step ASC
         LIMIT ?
     """, (limit,)).fetchall()
@@ -233,11 +233,48 @@ def _http_post(url: str, payload: dict, headers: dict) -> tuple[int, dict]:
         return 0, {"error": str(exc)}
 
 
+def whatsapp_configured(config: dict) -> bool:
+    """True se ha um provedor de WhatsApp com credenciais (UAZAPI ou Evolution)."""
+    if config.get("uazapi_url") and config.get("uazapi_token"):
+        return True
+    return bool(
+        (config.get("evolution_api_url") or config.get("evolution", {}).get("url"))
+        and (config.get("evolution_api_key") or config.get("evolution", {}).get("api_key"))
+    )
+
+
+def whatsapp_auto_send_enabled(config: dict) -> bool:
+    """Trava de seguranca: so' dispara para leads se o aluno liberou explicitamente.
+
+    Configs antigas (Evolution, sem a chave) continuam liberadas; a UAZAPI nasce travada.
+    """
+    return bool(config.get("whatsapp_auto_send", "uazapi_url" not in config))
+
+
+def _send_uazapi(phone: str, message: str, config: dict) -> bool:
+    """Envia texto pela UAZAPI: POST {url}/send/text, header 'token'."""
+    url = f"{config['uazapi_url'].rstrip('/')}/send/text"
+    headers = {"Content-Type": "application/json", "token": config["uazapi_token"]}
+    status, resp = _http_post(url, {"number": phone, "text": message}, headers)
+    if status == 200:
+        LOG.info("  WhatsApp (UAZAPI) enviado -> %s", mask_phone(phone))
+        return True
+    LOG.error("  Falha WhatsApp (UAZAPI) -> %s | status=%s | resp=%s", mask_phone(phone), status, str(resp)[:200])
+    return False
+
+
 def _send_whatsapp(phone: str, message: str, config: dict, dry_run: bool) -> bool:
-    """Envia mensagem via Evolution API."""
+    """Envia mensagem via UAZAPI (se configurada) ou Evolution API."""
     if dry_run:
         LOG.info("  [DRY-RUN] WhatsApp -> %s | %d chars", mask_phone(phone), len(message))
         return True
+
+    if not whatsapp_auto_send_enabled(config):
+        LOG.warning("  WhatsApp travado (whatsapp_auto_send=false). Nada enviado para %s.", mask_phone(phone))
+        return False
+
+    if config.get("uazapi_url") and config.get("uazapi_token"):
+        return _send_uazapi(phone, message, config)
 
     # Suporta formato flat (evolution_api_url) e nested (evolution.url)
     base_url = (config.get("evolution_api_url") or config.get("evolution", {}).get("url", "")).rstrip("/")
@@ -327,57 +364,23 @@ def action_search(config: dict, limit: int) -> None:
         LOG.warning("apify_scraper.py nao encontrado. Pulando busca.")
         return
 
-    try:
-        leads = apify_run_search(config=config, limit=limit)
-    except Exception as exc:
-        LOG.error("Erro ao executar busca Apify: %s", exc)
-        return
+    # Busca TODOS os segmentos do perfil, dividindo o limite entre eles.
+    # run_search ja' pontua, deduplica e grava no banco; aqui so' somamos.
+    profile = load_profile()
+    segments = profile.get("target_segments") or [profile.get("default_segment", "")]
+    segments = [s for s in segments if s] or [""]
+    per_segment = max(1, -(-limit // len(segments)))  # divisao arredondada para cima
 
-    if not leads:
+    inserted = 0
+    for segment in segments:
+        try:
+            inserted += int(apify_run_search(config=config, limit=per_segment, segment=segment) or 0)
+        except Exception as exc:
+            LOG.error("Erro ao executar busca Apify (%s): %s", segment or "padrao", exc)
+
+    if not inserted:
         LOG.info("Nenhum lead novo encontrado.")
         return
-
-    conn = _get_conn()
-    _ensure_db(conn)
-    inserted = 0
-
-    for lead in leads:
-        phone = lead.get("phone", "")
-        email = lead.get("email", "")
-        business_name = lead.get("business_name", "Desconhecido")
-
-        # Evita duplicatas por telefone
-        if phone:
-            exists = conn.execute(
-                "SELECT id FROM prospects WHERE phone = ?", (phone,)
-            ).fetchone()
-            if exists:
-                LOG.debug("  Lead ja existe: %s (%s)", business_name, mask_phone(phone))
-                continue
-
-        conn.execute("""
-            INSERT INTO prospects
-                (business_name, phone, email, segment, location, score,
-                 temperature, potential, price, created_at, channel, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            business_name,
-            phone,
-            email,
-            lead.get("segment", ""),
-            lead.get("location", ""),
-            float(lead.get("score", 5.0)),
-            lead.get("temperature", "frio"),
-            lead.get("potential", ""),
-            lead.get("price", "R$3.990"),
-            now_iso(),
-            lead.get("channel", "whatsapp"),
-            "apify",
-        ))
-        inserted += 1
-
-    conn.commit()
-    conn.close()
     LOG.info("Busca concluida: %d leads inseridos.", inserted)
 
 
@@ -385,6 +388,12 @@ def action_send(config: dict, dry_run: bool, limit: int) -> None:
     """Executa os disparos da fila de prospects."""
     mode = "[DRY-RUN] " if dry_run else ""
     LOG.info("=== %sENVIO DE MENSAGENS ===", mode)
+
+    has_whatsapp = whatsapp_configured(config) and whatsapp_auto_send_enabled(config)
+    has_email = bool(config.get("resend_api_key"))
+    if not dry_run and not (has_whatsapp or has_email):
+        LOG.info("Nenhum canal liberado para envio (WhatsApp nao configurado ou travado; Email nao configurado) - envio pulado. Leads ficam na fila.")
+        return
 
     conn = _get_conn()
     _ensure_db(conn)
@@ -424,14 +433,18 @@ def action_send(config: dict, dry_run: bool, limit: int) -> None:
             break
 
         # Gera mensagem
+        try:
+            _profile = load_profile()
+        except Exception:
+            _profile = {}
         lead_data = {
             "business_name": business_name,
             "first_name": business_name.split()[0] if business_name else "voce",
             "segment": segment,
             "location": row["location"] or "",
-            "price": row["price"] or "R$3.990",
-            "sender_name": config.get("sender_name", "Rafael"),
-            "agency_name": config.get("agency_name", "ZX LAB"),
+            "price": row["price"] or _profile.get("price_range") or "",
+            "sender_name": config.get("sender_name") or _profile.get("sender_name", ""),
+            "agency_name": config.get("agency_name") or _profile.get("agency_name", ""),
         }
 
         ok = False
@@ -464,10 +477,11 @@ def action_send(config: dict, dry_run: bool, limit: int) -> None:
         else:
             LOG.error("  Falha no envio. Step nao incrementado.")
 
-        # Delay aleatorio entre envios
-        delay = get_delay(channel=channel)
-        LOG.debug("  Aguardando %.1fs antes do proximo envio...", delay)
-        time.sleep(delay)
+        # Delay aleatorio entre envios reais (anti-bloqueio); nao espera apos falha/simulacao
+        if ok and not dry_run:
+            delay = get_delay(channel=channel)
+            LOG.debug("  Aguardando %.1fs antes do proximo envio...", delay)
+            time.sleep(delay)
 
     conn.close()
     LOG.info("=== Resultado: %d enviados | %d pulados ===", sent_count, skip_count)
@@ -529,7 +543,7 @@ select.status-select{background:var(--bg3);color:var(--text);border:1px solid va
 <script>
 const LEADS_DATA = __LEADS_JSON__;
 const STATUS_KEY = 'prospecting_status';
-const STATUS_OPTIONS = ['Novo','Em Sequencia','Respondeu','Sem Interesse','Convertido'];
+const STATUS_OPTIONS = ['Novo','Em Sequencia','Respondeu','Sequencia Concluida','Sem Interesse','Convertido'];
 function loadStatuses(){try{return JSON.parse(localStorage.getItem(STATUS_KEY)||'{}');}catch(e){return{};}}
 function saveStatus(id,value){const all=loadStatuses();all[id]=value;localStorage.setItem(STATUS_KEY,JSON.stringify(all));}
 function maskPhone(p){if(!p)return'-';const s=String(p);return s.length>=10?s.slice(0,4)+'***'+s.slice(-3):s;}
@@ -582,7 +596,7 @@ def _build_dashboard_html(agency_name: str, leads_data: list) -> str:
     return html
 
 
-def action_dashboard(config: dict) -> None:
+def action_dashboard(config: dict, open_browser: bool = True) -> None:
     """Gera leads.json e HTML com dados embutidos inline; abre no browser."""
     LOG.info("=== GERANDO DASHBOARD ===")
 
@@ -594,11 +608,16 @@ def action_dashboard(config: dict) -> None:
     leads = []
     for row in rows:
         last_sent = row["last_sent_at"] or ""
-        status = row["status"] or "novo"
+        # Nomes iguais as opcoes do dashboard (STATUS_OPTIONS), senao o select nao marca nada
+        status = row["status"] or "Novo"
         if row["responded"]:
-            status = "respondeu"
-        elif row["current_step"] >= 7:
-            status = "sequencia_concluida"
+            status = "Respondeu"
+        elif (row["current_step"] or 0) >= 7:
+            status = "Sequencia Concluida"
+        elif status.lower() in ("novo",):
+            status = "Novo"
+        elif status.lower().replace("_", " ") == "em sequencia":
+            status = "Em Sequencia"
 
         leads.append({
             "business_name": row["business_name"],
@@ -634,8 +653,9 @@ def action_dashboard(config: dict) -> None:
     _chmod_owner_only(DASHBOARD_HTML_PATH)
     LOG.info("Dashboard HTML regenerado: %d leads embutidos | %s", len(leads), DASHBOARD_HTML_PATH)
 
-    LOG.info("Abrindo dashboard no browser: %s", DASHBOARD_HTML_PATH)
-    open_in_browser(DASHBOARD_HTML_PATH)
+    if open_browser:
+        LOG.info("Abrindo dashboard no browser: %s", DASHBOARD_HTML_PATH)
+        open_in_browser(DASHBOARD_HTML_PATH)
 
 
 def action_mark_responded(phone: str) -> None:
@@ -654,14 +674,20 @@ def action_mark_responded(phone: str) -> None:
         print(f"Aviso: nenhum lead encontrado com o telefone {phone}")
 
 
-def action_daily(config: dict, dry_run: bool, limit: int) -> None:
+def action_daily(config: dict, dry_run: bool, limit: int, open_browser: bool = True) -> None:
     """Rotina diaria: busca + envio + dashboard."""
     LOG.info("======= ROTINA DIARIA =======")
     LOG.info("Inicio: %s | limit=%d | dry_run=%s", now_iso(), limit, dry_run)
 
-    action_search(config, limit)
-    action_send(config, dry_run, limit)
-    action_dashboard(config)
+    for name, fn in (
+        ("busca", lambda: action_search(config, limit)),
+        ("envio", lambda: action_send(config, dry_run, limit)),
+        ("dashboard", lambda: action_dashboard(config, open_browser)),
+    ):
+        try:
+            fn()
+        except Exception as exc:  # uma fase com erro nao pode impedir as seguintes
+            LOG.exception("Erro na fase de %s: %s", name, exc)
 
     LOG.info("======= ROTINA CONCLUIDA =======")
 
@@ -712,12 +738,24 @@ def main() -> None:
     parser.add_argument(
         "--limit",
         type=int,
-        default=20,
+        default=None,
         metavar="N",
-        help="Numero maximo de leads por execucao (default: 20)",
+        help="Numero maximo de leads por execucao (default: leads_per_batch do perfil, ou 20)",
+    )
+
+    parser.add_argument(
+        "--no-open",
+        action="store_true",
+        default=False,
+        help="Nao abre o dashboard no browser (usado pelas tarefas agendadas)",
     )
 
     args = parser.parse_args()
+    if args.limit is None:
+        try:
+            args.limit = int(load_profile().get("leads_per_batch") or 20)
+        except Exception:
+            args.limit = 20
 
     # Garante estrutura de diretorios
     ensure_structure()
@@ -738,13 +776,13 @@ def main() -> None:
         action_send(config, args.dry_run, args.limit)
 
     elif args.dashboard:
-        action_dashboard(config)
+        action_dashboard(config, not args.no_open)
 
     elif args.mark_responded:
         action_mark_responded(args.mark_responded)
 
     elif args.daily:
-        action_daily(config, args.dry_run, args.limit)
+        action_daily(config, args.dry_run, args.limit, not args.no_open)
 
 
 if __name__ == "__main__":

@@ -40,8 +40,9 @@ def run(cmd, shell=False, check=False):
         shell=shell,
         capture_output=True,
         text=True,
+        errors="replace",  # schtasks no Windows responde em cp850; nao quebrar no decode
     )
-    return result.returncode, result.stdout.strip(), result.stderr.strip()
+    return result.returncode, (result.stdout or "").strip(), (result.stderr or "").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +195,10 @@ def setup_windows():
 
     script_path = str(SCRIPTS_DIR / "prospecting_engine.py")
     python_executable = sys.executable or shutil.which("python") or "python"
+    # pythonw.exe roda sem abrir janela preta de terminal a cada execucao agendada
+    pythonw = Path(python_executable).with_name("pythonw.exe")
+    if pythonw.exists():
+        python_executable = str(pythonw)
 
     print("  Registrando tarefa: prospeccao diaria (08:00)...")
     cmd_daily = [
@@ -202,7 +207,7 @@ def setup_windows():
         "/tn",
         "OperacaoIA-Prospecting-Daily",
         "/tr",
-        subprocess.list2cmdline([python_executable, script_path, "--daily"]),
+        subprocess.list2cmdline([python_executable, script_path, "--daily", "--no-open"]),
         "/sc",
         "daily",
         "/st",
@@ -223,7 +228,7 @@ def setup_windows():
         "/tn",
         "OperacaoIA-Dashboard-Refresh",
         "/tr",
-        subprocess.list2cmdline([python_executable, script_path, "--dashboard"]),
+        subprocess.list2cmdline([python_executable, script_path, "--dashboard", "--no-open"]),
         "/sc",
         "minute",
         "/mo",
@@ -235,6 +240,32 @@ def setup_windows():
         print("  Tarefa dashboard registrada: OK")
     else:
         print(f"  Erro ao registrar tarefa dashboard (codigo {rc}): {err or out}")
+
+    print()
+    print("  Registrando tarefa: detector de respostas (a cada 10 min)...")
+    detector_path = str(SCRIPTS_DIR / "reply_detector.py")
+    cmd_replies = [
+        "schtasks", "/create", "/tn", "OperacaoIA-Reply-Detector",
+        "/tr", subprocess.list2cmdline([python_executable, detector_path]),
+        "/sc", "minute", "/mo", "10", "/f",
+    ]
+    rc, out, err = run(cmd_replies)
+    if rc == 0:
+        print("  Tarefa detector de respostas registrada: OK")
+    else:
+        print(f"  Erro ao registrar detector de respostas (codigo {rc}): {err or out}")
+
+    # Se o PC estiver desligado as 8h, roda assim que ligar; e roda tambem na bateria
+    print()
+    print("  Ajustando tarefas: rodar ao ligar o PC se perder o horario...")
+    for task in ("OperacaoIA-Prospecting-Daily", "OperacaoIA-Dashboard-Refresh", "OperacaoIA-Reply-Detector"):
+        ps = (
+            "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable "
+            "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; "
+            f"Set-ScheduledTask -TaskName '{task}' -Settings $s | Out-Null"
+        )
+        rc, out, err = run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps])
+        print(f"  {task}: {'OK' if rc == 0 else 'aviso — ' + (err or out)[:120]}")
 
     print()
     _verify_windows()
