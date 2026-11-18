@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS prospects (
     step1_sent_at TEXT, step2_sent_at TEXT, step3_sent_at TEXT,
     step4_sent_at TEXT, step5_sent_at TEXT, step6_sent_at TEXT, step7_sent_at TEXT,
     notes TEXT DEFAULT '',
+    status TEXT DEFAULT 'Novo',
+    last_sent_at TEXT,
     raw_data TEXT DEFAULT '{}',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
@@ -99,6 +101,11 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(CREATE_TABLE_SQL)
+    # Colunas que o motor de campanhas usa e que bancos antigos nao tem
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(prospects)")}
+    for col, ddl in (("status", "TEXT DEFAULT 'Novo'"), ("last_sent_at", "TEXT")):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE prospects ADD COLUMN {col} {ddl}")
     conn.commit()
     return conn
 
@@ -150,6 +157,29 @@ def normalize_phone(raw: str):
     return None
 
 
+# Links que NAO sao um site proprio: para quem vende sites, esses leads valem como "sem site"
+SOCIAL_LINK_DOMAINS = (
+    "instagram.com", "facebook.com", "fb.com", "fb.me", "linktr.ee", "linktree",
+    "wa.me", "api.whatsapp.com", "whatsapp.com", "tiktok.com", "youtube.com",
+    "twitter.com", "x.com", "linkedin.com", "beacons.ai", "bio.link", "taplink",
+    "google.com", "goo.gl", "g.page", "business.site", "doctoralia.com.br",
+    "ifood.com.br", "booksy.com", "trinks.com", "avec.app",
+)
+
+
+def has_real_site(website) -> bool:
+    """True so' se o link e' um site proprio (nao rede social, agregador ou agenda)."""
+    url = (website or "").strip().lower()
+    if not url or url in ("n/a", "-"):
+        return False
+    host = re.sub(r"^[a-z]+://", "", url).split("/")[0].split("?")[0]
+    host = host[4:] if host.startswith("www.") else host
+    return not any(
+        host == d or host.endswith("." + d) or ("." not in d and d in host)
+        for d in SOCIAL_LINK_DOMAINS
+    )
+
+
 def score_lead(item: dict) -> float:
     """Pontua lead de 0 a 10 com base nos fatores do spec."""
     score = 0.0
@@ -158,8 +188,7 @@ def score_lead(item: dict) -> float:
         score += 2
     if item.get("email"):
         score += 1
-    website = item.get("website") or ""
-    if not website or website.strip() in ("", "N/A", "n/a"):
+    if not has_real_site(item.get("website")):
         score += 2
     rating = item.get("totalScore") or item.get("rating")
     if rating is not None:
@@ -170,9 +199,9 @@ def score_lead(item: dict) -> float:
     reviews = item.get("reviewsCount") or item.get("reviews_count") or 0
     if reviews > 50:
         score += 1
-    if item.get("imageUrls") or item.get("images"):
+    if item.get("imageUrl") or item.get("imagesCount") or item.get("imageUrls") or item.get("images"):
         score += 1
-    if item.get("openingHours") or item.get("temporaryClosedUntil") is not None:
+    if item.get("openingHours") and not item.get("temporarilyClosed"):
         score += 1
     return round(min(score, 10), 1)
 
@@ -189,6 +218,8 @@ def generate_potential(lead: dict) -> str:
     points = []
     if not lead.get("website"):
         points.append("Sem site proprio")
+    elif not has_real_site(lead.get("website")):
+        points.append("Sem site proprio (so rede social/agenda)")
     rating = lead.get("rating")
     if rating is not None and rating < 4.5:
         points.append("espaco para crescer online")
@@ -197,6 +228,52 @@ def generate_potential(lead: dict) -> str:
     if lead.get("phone"):
         points.append("WhatsApp disponivel")
     return ", ".join(points) if points else "perfil padrao"
+
+
+UF_NAMES = {
+    "AC": "acre", "AL": "alagoas", "AP": "amapa", "AM": "amazonas", "BA": "bahia",
+    "CE": "ceara", "DF": "distrito federal", "ES": "espirito santo", "GO": "goias",
+    "MA": "maranhao", "MT": "mato grosso", "MS": "mato grosso do sul",
+    "MG": "minas gerais", "PA": "para", "PB": "paraiba", "PR": "parana",
+    "PE": "pernambuco", "PI": "piaui", "RJ": "rio de janeiro",
+    "RN": "rio grande do norte", "RS": "rio grande do sul", "RO": "rondonia",
+    "RR": "roraima", "SC": "santa catarina", "SP": "sao paulo", "SE": "sergipe",
+    "TO": "tocantins",
+}
+
+
+def _strip_accents(text: str) -> str:
+    import unicodedata
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", text or "") if not unicodedata.combining(c)
+    ).lower()
+
+
+def location_uf(location: str) -> str:
+    """Extrai a sigla do estado do fim da localizacao ('Fortaleza CE' -> 'CE')."""
+    tokens = re.split(r"[\s,\-/]+", (location or "").strip())
+    if tokens and tokens[-1].upper() in UF_NAMES:
+        return tokens[-1].upper()
+    return ""
+
+
+def item_in_region(item: dict, location: str) -> bool:
+    """True se o resultado do Google Maps e' do mesmo estado da busca.
+
+    O Google Maps as vezes devolve empresas de outras cidades/estados.
+    Sem sigla de estado na localizacao, ou sem endereco no item, nao filtra.
+    """
+    uf = location_uf(location)
+    if not uf:
+        return True
+    state = _strip_accents(item.get("state") or "")
+    address = item.get("address") or ""
+    if not state and not address:
+        return True
+    if state:
+        return state in (uf.lower(), UF_NAMES[uf])
+    addr = _strip_accents(address)
+    return bool(re.search(rf"\b{uf.lower()}\b", addr)) or UF_NAMES[uf] in addr
 
 
 def map_item_to_lead(item: dict, segment: str, location: str) -> dict:
@@ -233,7 +310,7 @@ def map_item_to_lead(item: dict, segment: str, location: str) -> dict:
         "score": score,
         "temperature": temp,
         "potential": "",
-        "price": item.get("price") or None,
+        "price": None,  # o "price" do Google ("$$") nao e o preco do servico do aluno
         "contact_name": "",
         "source": "apify",
         "raw_data": json.dumps(item, ensure_ascii=False),
@@ -253,6 +330,9 @@ def _http_json(method: str, url: str, body=None, token: str = "") -> dict:
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    if token:
+        # Token no header (nao na URL): URLs aparecem em mensagens de erro e logs
+        headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -266,7 +346,7 @@ def _http_json(method: str, url: str, body=None, token: str = "") -> dict:
 
 def start_apify_run(token: str, query: str, limit: int, logger: logging.Logger) -> str:
     """Inicia o actor APIFY e retorna o run ID."""
-    url = f"{APIFY_BASE_URL}/acts/{APIFY_ACTOR_ID}/runs?token={token}"
+    url = f"{APIFY_BASE_URL}/acts/{APIFY_ACTOR_ID}/runs"
     payload = {
         "searchStringsArray": [query],
         "maxCrawledPlacesPerSearch": limit,
@@ -274,7 +354,7 @@ def start_apify_run(token: str, query: str, limit: int, logger: logging.Logger) 
         "countryCode": "br",
     }
     logger.info("Iniciando APIFY run: query='%s', limit=%d", query, limit)
-    result = _http_json("POST", url, body=payload)
+    result = _http_json("POST", url, body=payload, token=token)
     run_id = result.get("data", {}).get("id")
     if not run_id:
         raise RuntimeError(f"Run ID nao encontrado na resposta: {result}")
@@ -284,10 +364,11 @@ def start_apify_run(token: str, query: str, limit: int, logger: logging.Logger) 
 
 def wait_for_run(token: str, run_id: str, logger: logging.Logger) -> str:
     """Aguarda o run terminar. Retorna o dataset ID."""
-    url = f"{APIFY_BASE_URL}/actor-runs/{run_id}?token={token}"
+    url = f"{APIFY_BASE_URL}/actor-runs/{run_id}"
     deadline = time.time() + POLL_TIMEOUT
+    result = {}
     while time.time() < deadline:
-        result = _http_json("GET", url)
+        result = _http_json("GET", url, token=token)
         status = result.get("data", {}).get("status", "")
         logger.debug("Run %s status: %s", run_id, status)
         if status == "SUCCEEDED":
@@ -297,14 +378,22 @@ def wait_for_run(token: str, run_id: str, logger: logging.Logger) -> str:
         if status in ("FAILED", "ABORTED", "TIMED-OUT"):
             raise RuntimeError(f"Run {run_id} terminou com status: {status}")
         time.sleep(POLL_INTERVAL)
-    raise TimeoutError(f"Run {run_id} nao terminou em {POLL_TIMEOUT}s")
+    logger.warning("Run %s nao terminou em %ds - abortando e usando o que ja foi coletado", run_id, POLL_TIMEOUT)
+    try:
+        _http_json("POST", f"{APIFY_BASE_URL}/actor-runs/{run_id}/abort", token=token)
+    except RuntimeError as exc:
+        logger.warning("Falha ao abortar run %s: %s", run_id, exc)
+    dataset_id = (result.get("data") or {}).get("defaultDatasetId")
+    if not dataset_id:
+        raise TimeoutError(f"Run {run_id} nao terminou em {POLL_TIMEOUT}s")
+    return dataset_id
 
 
 def fetch_dataset_items(token: str, dataset_id: str, logger: logging.Logger) -> list:
     """Busca todos os itens do dataset APIFY."""
-    url = f"{APIFY_BASE_URL}/datasets/{dataset_id}/items?token={token}&format=json&clean=true"
+    url = f"{APIFY_BASE_URL}/datasets/{dataset_id}/items?format=json&clean=true"
     logger.info("Buscando itens do dataset %s...", dataset_id)
-    result = _http_json("GET", url)
+    result = _http_json("GET", url, token=token)
     # A resposta pode ser lista direta ou dict com 'items'
     if isinstance(result, list):
         items = result
@@ -461,9 +550,29 @@ def main():
 # Entrypoint publico para prospecting_engine.py
 # ---------------------------------------------------------------------------
 
+ROTATION_PATH = PROSPECTS_DB_PATH.parent / "search_rotation.json"
+
+
+def next_search_area(areas: list, segment: str) -> str:
+    """Devolve a proxima area da lista para este segmento e avanca o ponteiro."""
+    try:
+        state = json.loads(ROTATION_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        state = {}
+    idx = int(state.get(segment, 0)) % len(areas)
+    state[segment] = idx + 1
+    try:
+        ROTATION_PATH.parent.mkdir(parents=True, exist_ok=True)
+        ROTATION_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+    return areas[idx]
+
+
 def run_search(config: dict, limit: int = 20, segment: str = "", location: str = "") -> int:
     """Executa busca APIFY e salva leads no SQLite. Retorna contagem de novos leads."""
     logger = setup_logging()
+    explicit_location = bool(location)
 
     apify_token = config.get("apify_api_token", "")
     if not apify_token:
@@ -477,6 +586,11 @@ def run_search(config: dict, limit: int = 20, segment: str = "", location: str =
     if not segment or not location:
         logger.error("segment e location sao obrigatorios para a busca")
         return 0
+
+    # Rotaciona bairros/cidades (search_areas do perfil) para nao repetir sempre
+    # o mesmo top-N do Google Maps, que o deduplicador descartaria inteiro.
+    if not explicit_location and profile.get("search_areas"):
+        location = next_search_area(profile["search_areas"], segment)
 
     query = f"{segment} em {location}"
     conn  = init_db(PROSPECTS_DB_PATH)
@@ -494,8 +608,16 @@ def run_search(config: dict, limit: int = 20, segment: str = "", location: str =
 
     new_count  = 0
     saved_leads = []
+    out_of_region = 0
 
+    closed = 0
     for item in items:
+        if item.get("permanentlyClosed"):
+            closed += 1
+            continue
+        if not item_in_region(item, location):
+            out_of_region += 1
+            continue
         lead = map_item_to_lead(item, segment, location)
         if not lead["phone"]:
             continue
@@ -508,6 +630,10 @@ def run_search(config: dict, limit: int = 20, segment: str = "", location: str =
                 sync_lead_to_supabase(lead, supa_url, supa_key, logger)
 
     conn.close()
+    if closed:
+        logger.info("  %d empresa(s) fechada(s) definitivamente descartada(s)", closed)
+    if out_of_region:
+        logger.info("  %d resultado(s) fora da regiao descartado(s)", out_of_region)
     logger.info("run_search concluido: %d novos leads de '%s'", new_count, query)
     return new_count
 

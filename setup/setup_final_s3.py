@@ -53,9 +53,9 @@ def run_first_search():
         print("  [AVISO] prospecting_engine.py nao encontrado. Pulando busca inicial.")
         return False
 
-    print("  Iniciando primeira busca de leads (limite: 20)...")
+    print("  Iniciando primeira busca de leads (quantidade do perfil)...")
     result = subprocess.run(
-        [sys.executable, str(engine), "--search", "--limit", "20"],
+        [sys.executable, str(engine), "--search"],  # sem --limit: usa leads_per_batch do perfil
         capture_output=False,
     )
     if result.returncode == 0:
